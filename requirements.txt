@@ -1,0 +1,7 @@
+streamlit
+pandas
+plotly
+statsmodels
+pydrive2
+PyPDF2
+openai
