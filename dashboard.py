@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from statsmodels.tsa.seasonal import seasonal_decompose
 import os
-from funciones_google import login, listar_archivos_carpeta
+from funciones_drive import login, listar_archivos_carpeta
 from lector_reporte_automático import archivo_actualizado
 # Configuración de la página
 st.set_page_config(
