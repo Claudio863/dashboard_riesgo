@@ -36,11 +36,21 @@ df_graf = archivo_actualizado()
 unicos_graf = st.checkbox(
     "Filtrar por ruts únicos y quedarme con la fecha más actual de creación"
 )
+
+
+# 1) Convertir a datetime -----------------------------
+df_graf["fecha_creacion"] = pd.to_datetime(
+    df_graf["fecha_creacion"],   # cadenas ISO: 2025-05-21 09:03:30.591000+00:00
+    utc=True,                    # reconoce el +00:00 como UTC
+    errors="coerce"              # NaT si alguna cadena es inválida
+)
 if unicos_graf:
+
     df_graf = (
-        df_graf.sort_values("fecha_creacion", ascending=False)
-               .drop_duplicates("rut", keep="first")
-               .reset_index(drop=True)
+        df_graf
+            .sort_values("fecha_creacion", ascending=False)   # más nuevos arriba
+            .drop_duplicates("rut", keep="first")             # solo el registro más actual por rut
+            .reset_index(drop=True)
     )
     df_cola_aws = dataframe_cola_aws()
     df_graf["rut"]       = df_graf["rut"].astype(str)
