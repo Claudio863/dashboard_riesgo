@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 from statsmodels.tsa.seasonal import seasonal_decompose
 import os
 from funciones_google import login, listar_archivos_carpeta
-
+from lector_reporte_automático import archivo_actualizado
 # Configuración de la página
 st.set_page_config(
     page_title="Dashboard: Resoluciones y Tendencia de Casos",
@@ -21,27 +21,7 @@ if st.button("Actualizar Datos"):
     st.rerun()
     #st.cache_data.clear()
 
-# Función para cargar el Google Sheet en un DataFrame
-def cargar_google_sheet_en_dataframe(sheet_id, ruta_descarga):
-    drive = login()
-    archivo = drive.CreateFile({'id': sheet_id})
-    ruta_archivo = os.path.join(ruta_descarga, 'sheet.csv')
-    archivo.GetContentFile(ruta_archivo, mimetype='text/csv')
-    df = pd.read_csv(ruta_archivo)
-    return df
-
-# Parámetros de conexión al Google Sheet
-sheet_id = '1rmSOvyghKM5WpDESHOEnRvVAgtMhELnjys6V9cZ9MG0'
-ruta_descarga = r'C:\\Users\\claud\\OneDrive\\Escritorio\\Info\\Proyectos\\AWS_Riesk\\Masive_extraction_json'
-
-# Cargar el Google Sheet en un DataFrame
-df = cargar_google_sheet_en_dataframe(sheet_id, ruta_descarga)
-
-# Seleccionar columnas y limpieza básica (incluye "analista_riesgo")
-df_graf = df[["full_name", "resolucion_riesgo", "fecha_creacion", "analista_riesgo"]].dropna()
-df_graf.reset_index(drop=True, inplace=True)
-df_graf["rut"] = df_graf["full_name"].apply(lambda x: x.split("_")[0])
-
+df_graf = archivo_actualizado()
 # Opción para filtrar por ruts únicos (última creación)
 unicos_graf = st.checkbox("Filtrar por ruts únicos y quedarme con la fecha más actual de creación")
 if unicos_graf:

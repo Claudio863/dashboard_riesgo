@@ -51,6 +51,42 @@ def archivo_actualizado ():
     carp_mes= carp_mes[carp_mes["Tipo"]=="text/csv"]
 
     reporte_actualizado_ev_manual=carp_mes.iloc[0]
-    archivo=bajar_archivo_por_id(reporte_actualizado_ev_manual["ID"])
+    ruta="temp_archives/"
+    archivo=bajar_archivo_por_id(reporte_actualizado_ev_manual["ID"],ruta)
+    reporte_manuals_evaluations_uptd=pd.read_csv(archivo)
+    reporte_manuals_evaluations_uptd
+    # Filtra las filas cuyo 'status' NO esté en la lista
+    reporte_manuals_evaluations_uptd = (
+        reporte_manuals_evaluations_uptd
+            [~reporte_manuals_evaluations_uptd["status"].isin(["FINISHED", "CREATED"])]
+    )
+    df_graf=reporte_manuals_evaluations_uptd.rename(columns={"idNumber": "rut",
+                                                         "resolution":"resolucion_riesgo",
+                                                            "manualEvaluationUpdatedDate":"fecha_creacion"})
+    df_graf=df_graf[["rut","resolucion_riesgo","fecha_creacion","status"]]
+    
+
+    import pandas as pd
+    import numpy as np
+
+    # 1) Asegúrate de que ambas columnas son texto
+    df_graf["resolucion_riesgo"] = df_graf["resolucion_riesgo"].astype(str)
+    df_graf["status"]            = df_graf["status"].astype(str).str.upper()   # mayúsculas p/consistencia
+
+    # 2) Máscaras
+    mask_zero = df_graf["resolucion_riesgo"] == "0"
+    mask_ret  = df_graf["status"] == "RETURNED_DUE_TO_RISK"
+    mask_ref  = df_graf["status"] == "REFUSED"
+
+    # 3) Asignaciones
+    df_graf.loc[mask_zero &  mask_ret,               "resolucion_riesgo"] = "Devuelto a comercial"
+    df_graf.loc[mask_zero &  mask_ref,               "resolucion_riesgo"] = "Rechazado"
+    df_graf.loc[mask_zero & ~mask_ret & ~mask_ref,   "resolucion_riesgo"] = "Desconocido"
+
+    return df_graf
+
+
+
+
 
 
