@@ -1,6 +1,7 @@
 
 
 
+
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 import pandas as pd
@@ -12,12 +13,11 @@ import os
 from PyPDF2 import PdfReader, PdfWriter
 from io import StringIO
 from openai import OpenAI
-import os
-import re
-from typing import Optional
+
+
 
 def login():
-    CREDENTIALS_FILE = r'C:\Users\claud\OneDrive\Escritorio\Info\Proyectos\Conexion_carpetas_drive\drive_automat.json'
+    CREDENTIALS_FILE = 'drive_automat.json'
     # Configuración para que PyDrive2 use el archivo de credenciales correcto
     GoogleAuth.DEFAULT_SETTINGS['client_config_file'] = CREDENTIALS_FILE
     gauth = GoogleAuth()
@@ -79,37 +79,14 @@ def listar_archivos_carpeta(folder_id):
     return df_carpeta
 
 
-# ───────────────────────────────────────────────
-# 1) Utilidad para nombres seguros
-# ───────────────────────────────────────────────
-_INVALID_CHARS = r'[<>:"/\\|?*]'
-
-def safe_filename(name: str, replacement: str = "-") -> str:
-    """
-    Devuelve `name` sin caracteres ilegales para rutas de Windows.
-    """
-    return re.sub(_INVALID_CHARS, replacement, name)
-
-def bajar_archivo_por_id(id_drive: str, ruta_descarga: str) -> Optional[str]:
-    """
-    Descarga un archivo desde Drive (PyDrive2) y lo guarda en `ruta_descarga`,
-    devolviendo la ruta completa ya saneada. Si algo falla, retorna None.
-    """
+def bajar_archivo_por_id(id_drive, ruta_descarga):
     try:
-        credenciales = login()                         # ← tu función de auth
+        credenciales = login()
         archivo = credenciales.CreateFile({'id': id_drive})
-        
-        # Nombre original y nombre seguro
-        nombre_original = archivo['title']
-        nombre_seguro   = safe_filename(nombre_original)
-
-        # Construye la ruta destino
-        ruta_completa = os.path.join(ruta_descarga, nombre_seguro)
-        os.makedirs(ruta_descarga, exist_ok=True)      # crea la carpeta si falta
-
+        nombre_archivo = archivo['title']
+        ruta_completa = ruta_descarga + nombre_archivo
         archivo.GetContentFile(ruta_completa)
         return ruta_completa
-
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"Error al bajar el archivo con ID {id_drive}: {e}")
         return None

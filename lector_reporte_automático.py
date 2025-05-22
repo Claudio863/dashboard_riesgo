@@ -1,4 +1,4 @@
-from funciones_drive import *
+from funciones_google import login, listar_archivos_carpeta, bajar_archivo_por_id
 import pandas as pd
 from datetime import date
 def archivo_actualizado ():
