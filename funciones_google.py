@@ -1,7 +1,5 @@
 
 
-
-
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 import pandas as pd
@@ -13,7 +11,9 @@ import os
 from PyPDF2 import PdfReader, PdfWriter
 from io import StringIO
 from openai import OpenAI
-
+import os
+import re
+from typing import Optional
 
 
 def login():
@@ -77,16 +77,37 @@ def listar_archivos_carpeta(folder_id):
         'Fecha Creación': fechas_creacion
     })
     return df_carpeta
+# ───────────────────────────────────────────────
+# 1) Utilidad para nombres seguros
+# ───────────────────────────────────────────────
+_INVALID_CHARS = r'[<>:"/\\|?*]'
 
+def safe_filename(name: str, replacement: str = "-") -> str:
+    """
+    Devuelve `name` sin caracteres ilegales para rutas de Windows.
+    """
+    return re.sub(_INVALID_CHARS, replacement, name)
 
-def bajar_archivo_por_id(id_drive, ruta_descarga):
+def bajar_archivo_por_id(id_drive: str, ruta_descarga: str) -> Optional[str]:
+    """
+    Descarga un archivo desde Drive (PyDrive2) y lo guarda en `ruta_descarga`,
+    devolviendo la ruta completa ya saneada. Si algo falla, retorna None.
+    """
     try:
-        credenciales = login()
+        credenciales = login()                         # ← tu función de auth
         archivo = credenciales.CreateFile({'id': id_drive})
-        nombre_archivo = archivo['title']
-        ruta_completa = ruta_descarga + nombre_archivo
+        
+        # Nombre original y nombre seguro
+        nombre_original = archivo['title']
+        nombre_seguro   = safe_filename(nombre_original)
+
+        # Construye la ruta destino
+        ruta_completa = os.path.join(ruta_descarga, nombre_seguro)
+        os.makedirs(ruta_descarga, exist_ok=True)      # crea la carpeta si falta
+
         archivo.GetContentFile(ruta_completa)
         return ruta_completa
-    except Exception as e:
+
+    except Exception as e:  # noqa: BLE001
         print(f"Error al bajar el archivo con ID {id_drive}: {e}")
         return None

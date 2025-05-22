@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from statsmodels.tsa.seasonal import seasonal_decompose
 import os
-
+from identificador_analista import dataframe_cola_aws
 from lector_reporte_automático import archivo_actualizado
 # Configuración de la página
 st.set_page_config(
@@ -22,11 +22,31 @@ if st.button("Actualizar Datos"):
     #st.cache_data.clear()
 
 df_graf = archivo_actualizado()
+
+
+
 # Opción para filtrar por ruts únicos (última creación)
 unicos_graf = st.checkbox("Filtrar por ruts únicos y quedarme con la fecha más actual de creación")
 if unicos_graf:
     df_graf = df_graf.sort_values("fecha_creacion", ascending=False).drop_duplicates("rut", keep="first")
     df_graf.reset_index(drop=True, inplace=True)
+
+    df_cola_aws=dataframe_cola_aws()
+    # Asegúrate de que la columna rut sea del mismo tipo en ambos DF
+    df_graf["rut"] = df_graf["rut"].astype(str)
+    df_cola_aws["rut"]      = df_cola_aws["rut"].astype(str)
+
+    # 1) Une solo la columna necesaria
+    df_graf = df_graf.merge(
+        df_cola_aws[["rut", "analista_riesgo"]],
+        on="rut",
+        how="left"                      # mantiene todos los ruts de df_graf
+    )
+
+    # 2) Rellena los que no encontraron correspondencia
+    df_graf["analista_riesgo"] = df_graf["analista_riesgo"].fillna("Desconocido")
+
+
 
 # Nuevo botón para omitir registros con resolucion_riesgo == "0"
 omitir_resolucion_cero = st.checkbox("Omitir resoluciones '0' para los gráficos")
