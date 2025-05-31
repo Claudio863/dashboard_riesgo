@@ -13,9 +13,6 @@ from openai import OpenAI
 import os
 import re
 from typing import Optional
-import streamlit as st
-import json
-import tempfile
 
 # Función de respaldo para cargar datos
 def archivo_actualizado():
@@ -38,88 +35,41 @@ def archivo_actualizado():
 
 
 def login():
-    """
-    Función de autenticación que funciona tanto localmente como en Streamlit Cloud
-    """
-    try:
-        # Verificar si estamos en Streamlit Cloud
-        if hasattr(st, 'secrets') and 'google' in st.secrets:
-            # Configuración para Streamlit Cloud usando secrets
-            
-            # Crear archivo temporal de credenciales desde secrets
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                json.dump(dict(st.secrets.google_credentials), f)
-                credentials_path = f.name
-            
-            # Configurar GoogleAuth para usar el archivo temporal
-            gauth = GoogleAuth()
-            gauth.settings['client_config_file'] = credentials_path
-            gauth.settings['client_config_backend'] = 'file'
-            gauth.settings['oauth_scope'] = ['https://www.googleapis.com/auth/drive']
-            
-            # Usar token guardado en secrets si existe
-            if 'google_token' in st.secrets:
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-                    json.dump(dict(st.secrets.google_token), f)
-                    gauth.LoadCredentialsFile(f.name)
-                
-                if gauth.access_token_expired:
-                    gauth.Refresh()
-                else:
-                    gauth.Authorize()
-            else:
-                # Si no hay token, usar service account (recomendado para producción)
-                from pydrive2.auth import ServiceAccountCredentials
-                gauth = GoogleAuth()
-                scope = ['https://www.googleapis.com/auth/drive']
-                gauth.credentials = ServiceAccountCredentials.from_json_keyfile_dict(
-                    dict(st.secrets.google_service_account), scope)
-            
-            # Limpiar archivos temporales
-            try:
-                os.unlink(credentials_path)
-            except:
-                pass
-                
-        else:
-            # Configuración local usando archivos
-            CREDENTIALS_FILE = 'drive_automat.json'
-            GoogleAuth.DEFAULT_SETTINGS['client_config_file'] = CREDENTIALS_FILE
-            gauth = GoogleAuth()
-            
-            gauth.settings['client_config_backend'] = 'file'
-            gauth.settings['oauth_scope'] = ['https://www.googleapis.com/auth/drive']
-            gauth.settings['get_refresh_token'] = True
-            gauth.settings['access_type'] = 'offline'
-            gauth.settings['approval_prompt'] = 'force'
+    CREDENTIALS_FILE = 'drive_automat.json'
+    # Configuración para que PyDrive2 use el archivo de credenciales correcto
+    GoogleAuth.DEFAULT_SETTINGS['client_config_file'] = CREDENTIALS_FILE
+    gauth = GoogleAuth()
+    
+    # Modificar el flujo de autenticación para obtener el refresh_token
+    gauth.settings['client_config_backend'] = 'file'
+    gauth.settings['oauth_scope'] = ['https://www.googleapis.com/auth/drive']
+    gauth.settings['get_refresh_token'] = True
+    
+    # Forzar `access_type` a 'offline' y `approval_prompt` a 'force' para garantizar el refresh_token
+    gauth.settings['access_type'] = 'offline'
+    gauth.settings['approval_prompt'] = 'force'
 
-            # Intentar cargar las credenciales guardadas
-            gauth.LoadCredentialsFile("credentials.json")
-            if gauth.credentials is None:
-                gauth.LocalWebserverAuth()
-            elif gauth.access_token_expired:
-                gauth.Refresh()
-            else:
-                gauth.Authorize()
+    # Intentar cargar las credenciales guardadas
+    gauth.LoadCredentialsFile("credentials.json")
+    if gauth.credentials is None:
+        # Si no existen, lanzar el flujo de autenticación web para obtener credenciales nuevas
+        gauth.LocalWebserverAuth()
+    elif gauth.access_token_expired:
+        # Refrescar el token si ha expirado
+        gauth.Refresh()
+    else:
+        # Autorizar con las credenciales existentes
+        gauth.Authorize()
 
-            # Guardar las credenciales
-            gauth.SaveCredentialsFile("credentials.json")
-        
-        # Retornar el objeto GoogleDrive
-        drive = GoogleDrive(gauth)
-        return drive
-        
-    except Exception as e:
-        print(f"Error en autenticación de Google Drive: {e}")
-        # Fallback: retornar None para que el dashboard use datos locales
-        return None
+    # Guardar las credenciales en un archivo para reutilizarlas en el futuro
+    gauth.SaveCredentialsFile("credentials.json")
+    
+    # Retornar el objeto GoogleDrive para realizar operaciones con la API
+    drive = GoogleDrive(gauth)
+    return drive
 
 def listar_archivos_carpeta(folder_id):
     credenciales = login()
-    if credenciales is None:
-        print("Error: No se pudo establecer conexión con Google Drive")
-        return [], [], [], []
-    
     query = f"'{folder_id}' in parents and trashed = false"
     nombres = []
     id_archive = []
@@ -163,10 +113,6 @@ def bajar_archivo_por_id(id_drive: str, ruta_descarga: str) -> Optional[str]:
     """
     try:
         credenciales = login()                         # ← tu función de auth
-        if credenciales is None:
-            print(f"Error: No se pudo conectar a Google Drive para descargar {id_drive}")
-            return None
-            
         archivo = credenciales.CreateFile({'id': id_drive})
         
         # Nombre original y nombre seguro
@@ -204,11 +150,9 @@ def subir_archivo(ruta_archivo_local: str, nombre_archivo: str = None, descripci
         if not os.path.exists(ruta_archivo_local):
             print(f"Error: El archivo {ruta_archivo_local} no existe.")
             return None
-          # Obtener credenciales de Drive
+        
+        # Obtener credenciales de Drive
         credenciales = login()
-        if credenciales is None:
-            print("Error: No se pudo conectar a Google Drive para subir archivo")
-            return None
         
         # Generar ID único si no se especifica nombre
         if nombre_archivo is None:

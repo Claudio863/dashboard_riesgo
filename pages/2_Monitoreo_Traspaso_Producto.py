@@ -6,31 +6,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import sys
 import os
-import glob
 
 # Agregar el directorio padre al path para importar funciones
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from funciones_google import login
 
 st.set_page_config(page_title="Monitoreo Traspaso Producto", layout="wide")
-
-# Función de respaldo para cargar datos locales
-def cargar_datos_locales():
-    """Función de respaldo para cargar datos desde archivos CSV locales"""
-    try:
-        # Buscar archivos CSV de datos
-        archivos_csv = glob.glob("datos_*.csv")
-        if archivos_csv:
-            archivo_mas_reciente = max(archivos_csv)
-            df = pd.read_csv(archivo_mas_reciente)
-            st.info(f"📁 Cargando datos desde archivo local: {archivo_mas_reciente}")
-            return df
-        else:
-            st.error("❌ No se encontraron archivos CSV locales")
-            return pd.DataFrame()
-    except Exception as e:
-        st.error(f"❌ Error cargando archivo local: {e}")
-        return pd.DataFrame()
 
 st.title("📊 Dashboard de Evaluaciones: Análisis por Tipo de Resolución")
 st.markdown("---")
@@ -47,10 +28,6 @@ def cargar_datos_google_sheet():
         sheet_id = '1wEcS8JvfKqjHA5PlD5N6ZaixG0rFYVq_pUQK1eMz5t4'
         
         drive = login()
-        if drive is None:
-            st.warning("⚠️ Sin conexión a Google Drive, usando datos locales")
-            return cargar_datos_locales()
-            
         archivo = drive.CreateFile({'id': sheet_id})
         
         # Descargar como CSV temporal
@@ -70,8 +47,7 @@ def cargar_datos_google_sheet():
         
     except Exception as e:
         st.error(f"Error cargando datos desde Google Sheet: {str(e)}")
-        st.info("🔄 Intentando cargar datos locales...")
-        return cargar_datos_locales()
+        return pd.DataFrame()
 
 # Cargar datos desde Google Sheet
 with st.spinner("📊 Cargando datos desde Google Sheet..."):

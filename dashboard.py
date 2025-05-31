@@ -85,21 +85,12 @@ def archivo_actualizado():
 @st.cache_data(ttl=3600)  # Cache por 1 hora
 def cargar_google_sheet_en_dataframe(sheet_id, ruta_descarga=""):
     """Carga un Google Sheet específico en DataFrame"""
-    try:
-        drive = login()
-        if drive is None:
-            st.warning("⚠️ Sin conexión a Google Drive, usando datos locales")
-            return archivo_actualizado()
-            
-        archivo = drive.CreateFile({'id': sheet_id})
-        ruta_archivo = os.path.join(ruta_descarga, f'sheet_{sheet_id}.csv')
-        archivo.GetContentFile(ruta_archivo, mimetype='text/csv')
-        df = pd.read_csv(ruta_archivo)
-        return df
-    except Exception as e:
-        st.error(f"Error cargando Google Sheet: {e}")
-        st.info("🔄 Intentando cargar datos locales...")
-        return archivo_actualizado()
+    drive = login()
+    archivo = drive.CreateFile({'id': sheet_id})
+    ruta_archivo = os.path.join(ruta_descarga, f'sheet_{sheet_id}.csv')
+    archivo.GetContentFile(ruta_archivo, mimetype='text/csv')
+    df = pd.read_csv(ruta_archivo)
+    return df
 
 def obtener_datos_google_sheets():
     """Obtiene datos combinados de ambos Google Sheets"""
