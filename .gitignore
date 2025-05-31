@@ -1,2 +1,13 @@
 credentials.json
 drive_automat.json
+.streamlit/secrets.toml
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+Thumbs.db
+temp_archives/
+datos_*.csv
+test_*.py
+CORRECCION_*.py
