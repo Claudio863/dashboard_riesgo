@@ -4,6 +4,10 @@ from funciones_google import *
 def dataframe_cola_aws():
     def cargar_google_sheet_en_dataframe(sheet_id, ruta_descarga):
         drive = login()
+        if drive is None:
+            print("Error: No se pudo conectar a Google Drive")
+            return pd.DataFrame()
+            
         archivo = drive.CreateFile({'id': sheet_id})
         
         # Definir la ruta donde se guardará el CSV temporalmente
