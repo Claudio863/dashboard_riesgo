@@ -10,7 +10,6 @@ import os
 from datetime import datetime, date
 from funciones_google import login, listar_archivos_carpeta, gestionar_archivo_busqueda_diario, obtener_archivo_historico_desde_drive, verificar_estado_actualizacion_drive
 from identificador_analista import dataframe_cola_aws
-from lector_reporte_automático import archivo_actualizado
 
 # ──────────────── Configuración y estilos ─────────────────
 st.set_page_config(
@@ -60,6 +59,27 @@ MARGINS = dict(l=80, r=80, t=100, b=80)
 
 FOLDER_ID = "1H--_ASpw__9OTnUG1bDfGZ22zRlUpMdF"
 CACHE_FILE = "datos_diarios_cache.csv"
+
+# ──────────────── Función de carga de datos ────────────────
+def archivo_actualizado():
+    """
+    Función de respaldo para cargar datos desde archivo CSV local
+    """
+    try:
+        # Buscar archivo CSV más reciente
+        import glob
+        archivos_csv = glob.glob("datos_*.csv")
+        if archivos_csv:
+            archivo_mas_reciente = max(archivos_csv)
+            df = pd.read_csv(archivo_mas_reciente)
+            st.info(f"📁 Cargando datos desde archivo local: {archivo_mas_reciente}")
+            return df
+        else:
+            st.error("❌ No se encontraron archivos CSV locales")
+            return pd.DataFrame()
+    except Exception as e:
+        st.error(f"❌ Error cargando archivo local: {e}")
+        return pd.DataFrame()
 
 # ──────────────── Funciones auxiliares ─────────────────
 @st.cache_data(ttl=3600)  # Cache por 1 hora

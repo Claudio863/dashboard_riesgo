@@ -1,4 +1,5 @@
 from pydrive2.auth import GoogleAuth
+from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 import pandas as pd
 import pandas as pd
@@ -12,6 +13,25 @@ from openai import OpenAI
 import os
 import re
 from typing import Optional
+
+# Función de respaldo para cargar datos
+def archivo_actualizado():
+    """
+    Función de respaldo para cargar datos desde archivo CSV local
+    Reemplaza la funcionalidad del módulo lector_reporte_automático eliminado
+    """
+    try:
+        import glob
+        archivos_csv = glob.glob("datos_*.csv")
+        if archivos_csv:
+            archivo_mas_reciente = max(archivos_csv)
+            df = pd.read_csv(archivo_mas_reciente)
+            return df
+        else:
+            return pd.DataFrame()
+    except Exception as e:
+        print(f"Error cargando archivo local: {e}")
+        return pd.DataFrame()
 
 
 def login():
@@ -258,12 +278,10 @@ def gestionar_archivo_busqueda_diario(folder_id="1H--_ASpw__9OTnUG1bDfGZ22zRlUpM
     
     Args:
         folder_id (str): ID del folder de Google Drive donde almacenar los archivos
-        
-    Returns:
+          Returns:
         str: Ruta del archivo local descargado/generado
     """
     from datetime import date, datetime, time
-    from lector_reporte_automático import archivo_actualizado
     
     try:
         # Obtener fecha y hora actual
@@ -398,11 +416,9 @@ def gestionar_archivo_busqueda_diario(folder_id="1H--_ASpw__9OTnUG1bDfGZ22zRlUpM
         
     except Exception as e:
         print(f"❌ Error en gestión del archivo de búsqueda diario: {e}")
-        
-        # Fallback: usar el proceso local tradicional
+          # Fallback: usar el proceso local tradicional
         print(f"🔄 Usando proceso local como respaldo...")
         try:
-            from lector_reporte_automático import archivo_actualizado
             df_respaldo = archivo_actualizado()
             ruta_respaldo = f"datos_respaldo_{date.today().strftime('%Y-%m-%d')}.csv"
             df_respaldo.to_csv(ruta_respaldo, index=False)
