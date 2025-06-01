@@ -1,5 +1,5 @@
-# dashboard_riesgo.py  – versión con márgenes ampliados y fuentes mayores
-# ────────────────────────────────────────────────────────────────────────
+# dashboard_riesgo.py - version con margenes ampliados y fuentes mayores
+# ----------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -11,7 +11,7 @@ from datetime import datetime, date
 from funciones_google import login, listar_archivos_carpeta, archivo_actualizado
 from identificador_analista import dataframe_cola_aws
 
-# ──────────────── Configuración y estilos ─────────────────
+# ------------------ Configuracion y estilos -------------------
 st.set_page_config(
     page_title="Dashboard: Resoluciones y Tendencia de Casos",
     layout="wide",
@@ -48,7 +48,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ──────────────── Constantes ────────────────
+# ------------------ Constantes --------------------
 MAIN_TITLE_SIZE = 28
 SUBPLOT_TITLE_SZ = 24
 AXIS_LABEL_SIZE = 18
@@ -60,10 +60,10 @@ MARGINS = dict(l=80, r=80, t=100, b=80)
 FOLDER_ID = "1H--_ASpw__9OTnUG1bDfGZ22zRlUpMdF"
 CACHE_FILE = "datos_diarios_cache.csv"
 
-# ──────────────── Funciones auxiliares ─────────────────
+# ------------------ Funciones auxiliares -------------------
 @st.cache_data(ttl=3600)  # Cache por 1 hora
 def cargar_google_sheet_en_dataframe(sheet_id, ruta_descarga=""):
-    """Carga un Google Sheet específico en DataFrame"""
+    """Carga un Google Sheet especifico en DataFrame"""
     drive = login()
     archivo = drive.CreateFile({'id': sheet_id})
     ruta_archivo = os.path.join(ruta_descarga, f'sheet_{sheet_id}.csv')
@@ -88,7 +88,7 @@ def obtener_datos_google_sheets():
     return df_procesado
 
 def verificar_y_obtener_datos_del_dia():
-    """Verifica si existen datos del día actual, si no los descarga"""
+    """Verifica si existen datos del dia actual, si no los descarga"""
     hoy = date.today().strftime("%Y-%m-%d")
     archivo_cache_hoy = f"datos_{hoy}.csv"
     
@@ -111,26 +111,26 @@ def verificar_y_obtener_datos_del_dia():
         return df_hoy
 
 def obtener_datos_combinados():
-    """Combina datos históricos con datos actuales de Google Sheets"""
-    # Datos del día actual desde Google Sheets
+    """Combina datos historicos con datos actuales de Google Sheets"""
+    # Datos del dia actual desde Google Sheets
     df_actual = verificar_y_obtener_datos_del_dia()
     df_actual['fecha_creacion'] = pd.to_datetime(df_actual['fecha_creacion'], errors='coerce').dt.tz_localize(None)
 
-    # Datos históricos desde archivo
+    # Datos historicos desde archivo
     df_historico = archivo_actualizado()
-    # --- Validación defensiva ---
+    # --- Validacion defensiva ---
     if "fecha_creacion" not in df_historico.columns:
         st.error(
-            "❌ El archivo histórico cargado no contiene la columna 'fecha_creacion'. "
+            "❌ El archivo historico cargado no contiene la columna 'fecha_creacion'. "
             "Verifica que el respaldo tenga la estructura correcta o vuelve a generar el archivo."
         )
         st.stop()
-    # --- Fin validación ---
+    # --- Fin validacion ---
     df_historico["fecha_creacion"] = pd.to_datetime(
         df_historico["fecha_creacion"], utc=True, errors="coerce"
     ).dt.tz_localize(None)
 
-    # Filtrar datos históricos para evitar duplicados (excluir hoy)
+    # Filtrar datos historicos para evitar duplicados (excluir hoy)
     hoy = pd.Timestamp.now().normalize()
     df_historico = df_historico[df_historico['fecha_creacion'] < hoy]
 
@@ -139,14 +139,14 @@ def obtener_datos_combinados():
     
     return df_final
 
-# ──────────────── Header principal ─────────────────
+# ------------------ Header principal -------------------
 st.markdown("""
 <div class="main-header">
-    <h1>🎯 Dashboard: Resoluciones de Riesgo y Evolución de Casos</h1>
+    <h1>🎯 Dashboard: Resoluciones de Riesgo y Evolucion de Casos</h1>
 </div>
 """, unsafe_allow_html=True)
 
-# ──────────────── Controles principales ─────────────────
+# ------------------ Controles principales -------------------
 col1, col2, col3 = st.columns([2, 1, 1])
 
 with col1:
@@ -158,27 +158,27 @@ with col2:
         st.rerun()
 
 with col3:
-    st.markdown(f"**📅 Última actualización:** {datetime.now().strftime('%H:%M')}")
+    st.markdown(f"**📅 Ultima actualizacion:** {datetime.now().strftime('%H:%M')}")
 
-# ──────────────── Carga de datos ─────────────────
+# ------------------ Carga de datos -------------------
 @st.cache_data(ttl=1800)  # Cache por 30 minutos
 def cargar_datos():
     return obtener_datos_combinados()
 
 df_graf = cargar_datos()
 
-# ──────────────── Sidebar: Configuración ─────────────────
-st.sidebar.markdown("## ⚙️ Configuración")
+# ------------------ Sidebar: Configuracion -------------------
+st.sidebar.markdown("## ⚙️ Configuracion")
 
 # Filtros de datos
 unicos_graf = st.sidebar.checkbox(
-    "🔍 Filtrar por ruts únicos (fecha más reciente)",
-    help="Mantiene solo el registro más reciente por RUT"
+    "🔍 Filtrar por ruts unicos (fecha mas reciente)",
+    help="Mantiene solo el registro mas reciente por RUT"
 )
 
 omitir_cero = st.sidebar.checkbox(
     "🚫 Omitir resoluciones '0'",
-    help="Excluye resoluciones con valor '0' de los gráficos"
+    help="Excluye resoluciones con valor '0' de los graficos"
 )
 
 # Procesar filtros
@@ -189,7 +189,7 @@ if unicos_graf:
         .reset_index(drop=True)
     )
     
-    # Agregar información de analistas
+    # Agregar informacion de analistas
     df_cola_aws = dataframe_cola_aws()
     df_graf["rut"] = df_graf["rut"].astype(str)
     df_cola_aws["rut"] = df_cola_aws["rut"].astype(str)
@@ -201,13 +201,13 @@ if unicos_graf:
 if omitir_cero:
     df_graf = df_graf[df_graf["resolucion_riesgo"] != "0"]
 
-# ──────────────── Sidebar: Filtros de fecha ─────────────────
+# ------------------ Sidebar: Filtros de fecha -------------------
 st.sidebar.markdown("## 📅 Filtros de Tiempo")
 
 tipo_consulta = st.sidebar.radio(
     "Tipo de consulta:",
-    ("📊 Intervalo de fechas", "📅 Día específico"),
-    help="Selecciona el tipo de análisis temporal"
+    ("📊 Intervalo de fechas", "📅 Dia especifico"),
+    help="Selecciona el tipo de analisis temporal"
 )
 
 if tipo_consulta == "📊 Intervalo de fechas":
@@ -226,9 +226,9 @@ if tipo_consulta == "📊 Intervalo de fechas":
     intervalo_texto = f"{start_date} - {end_date}"
     
 else:
-    single_day = st.sidebar.date_input("📅 Selecciona el día")
+    single_day = st.sidebar.date_input("📅 Selecciona el dia")
     if not single_day:
-        st.error("⚠️ Selecciona un día")
+        st.error("⚠️ Selecciona un dia")
         st.stop()
     
     df_filtered = df_graf[
@@ -240,7 +240,7 @@ else:
 
 df_filtered["mes"] = df_filtered["fecha_creacion"].dt.to_period("M").astype(str)
 
-# ──────────────── Métricas principales ─────────────────
+# ------------------ Metricas principales -------------------
 if not df_filtered.empty:
     col1, col2, col3, col4 = st.columns(4)
     
@@ -248,14 +248,14 @@ if not df_filtered.empty:
         st.metric(
             "📊 Total de Casos",
             df_filtered.shape[0],
-            help="Número total de casos en el período seleccionado"
+            help="Numero total de casos en el periodo seleccionado"
         )
     
     with col2:
         aprobados = len(df_filtered[df_filtered["resolucion_riesgo"].isin(["Aprobado", "100% aprobado"])])
         tasa_aprobacion = (aprobados / len(df_filtered) * 100) if len(df_filtered) > 0 else 0
         st.metric(
-            "✅ Tasa de Aprobación",
+            "✅ Tasa de Aprobacion",
             f"{tasa_aprobacion:.1f}%",
             help="Porcentaje de casos aprobados"
         )
@@ -266,10 +266,10 @@ if not df_filtered.empty:
             st.metric(
                 "👥 Analistas Activos",
                 analistas_activos,
-                help="Número de analistas que evaluaron casos"
+                help="Numero de analistas que evaluaron casos"
             )
         else:
-            st.metric("👥 Analistas", "N/A", help="Requiere filtro por RUT único")
+            st.metric("👥 Analistas", "N/A", help="Requiere filtro por RUT unico")
     
     with col4:
         if len(df_filtered) > 0:
@@ -278,13 +278,13 @@ if not df_filtered.empty:
             st.metric(
                 "📈 Promedio Diario",
                 f"{promedio_diario:.1f}",
-                help="Promedio de casos por día"
+                help="Promedio de casos por dia"
             )
 else:
-    st.warning("⚠️ No hay datos para el período seleccionado")
+    st.warning("⚠️ No hay datos para el periodo seleccionado")
     st.stop()
 
-# ──────────────── Configuración de gráficos ─────────────────
+# ------------------ Configuracion de graficos -------------------
 color_map = {
     "Desconocido": "#AAAAAA",
     "0": "#CCCCCC",
@@ -301,10 +301,10 @@ orden_categorias = ["0", "Aprobado", "100% aprobado", "Aprobado con propuesta",
                    "Aprobado con Propuesta", "Devuelto a comercial", 
                    "Devuelto Comercial", "Rechazado", "Desconocido"]
 
-# ──────────────── Generación de gráficos ─────────────────
+# ------------------ Generacion de graficos -------------------
 missing_graphs = []
 
-# Gráfico 1: Resoluciones por mes
+# Grafico 1: Resoluciones por mes
 show_graph1 = False
 if not df_filtered.empty and df_filtered["mes"].nunique() > 0:
     df_c = df_filtered.groupby(["mes", "resolucion_riesgo"]).size().reset_index(name="cantidad")
@@ -323,16 +323,16 @@ if not df_filtered.empty and df_filtered["mes"].nunique() > 0:
     fig_bar.update_traces(textposition="outside", marker_line_width=0)
     fig_bar.update_layout(
         margin=MARGINS, title_font_size=SUBPLOT_TITLE_SZ,
-        xaxis_title="Período", yaxis_title="Porcentaje (%)",
+        xaxis_title="Periodo", yaxis_title="Porcentaje (%)",
         font=dict(size=TICK_FONT_SIZE),
     )
     show_graph1 = True
 else:
     missing_graphs.append("Resoluciones por Mes")
 
-# Gráfico 2: Distribución por mes seleccionado
+# Grafico 2: Distribucion por mes seleccionado
 available_months = sorted(df_filtered["mes"].unique())
-selected_month = st.sidebar.selectbox("📊 Mes para gráfico circular", available_months)
+selected_month = st.sidebar.selectbox("📊 Mes para grafico circular", available_months)
 
 show_graph2 = False
 if selected_month in df_filtered["mes"].unique():
@@ -347,14 +347,14 @@ if selected_month in df_filtered["mes"].unique():
             )
             show_graph2 = True
         else:
-            missing_graphs.append(f"Distribución para {selected_month}")
+            missing_graphs.append(f"Distribucion para {selected_month}")
     else:
-        missing_graphs.append(f"Distribución para {selected_month}")
+        missing_graphs.append(f"Distribucion para {selected_month}")
 
-# Gráfico 3: Series de tiempo
+# Grafico 3: Series de tiempo
 show_graph3 = False
 trend_trace = None
-if tipo_consulta == "📅 Día específico":
+if tipo_consulta == "📅 Dia especifico":
     # Agrupar por hora
     serie_raw = df_filtered.groupby(df_filtered["fecha_creacion"].dt.hour).size()
     serie = serie_raw.reindex(range(24), fill_value=0)
@@ -367,7 +367,7 @@ if tipo_consulta == "📅 Día específico":
     )
     show_graph3 = True
 else:
-    # Agrupar por día
+    # Agrupar por dia
     serie_raw = df_filtered.groupby(df_filtered["fecha_creacion"].dt.date).size()
     if not serie_raw.empty:
         serie_raw.index = pd.to_datetime(serie_raw.index)
@@ -399,7 +399,7 @@ else:
         
         show_graph3 = True
 
-# Gráfico 4: Analistas
+# Grafico 4: Analistas
 show_graph4 = False
 if unicos_graf and "analista_riesgo" in df_filtered.columns:
     df_a = df_filtered.groupby("analista_riesgo").size().reset_index(name="operaciones")
@@ -417,18 +417,18 @@ if unicos_graf and "analista_riesgo" in df_filtered.columns:
 else:
     missing_graphs.append("Operaciones por Analista")
 
-# ──────────────── Panel de gráficos combinados ─────────────────
+# ------------------ Panel de graficos combinados -------------------
 st.markdown("---")
-st.markdown("## 📈 Análisis Visual")
+st.markdown("## 📈 Analisis Visual")
 
 fig = make_subplots(
     rows=2, cols=2,
     specs=[[{"type": "xy"}, {"type": "domain"}],
            [{"type": "xy"}, {"type": "xy"}]],
     subplot_titles=(
-        f"📊 Resoluciones por Período (Total: {df_filtered.shape[0]})",
-        f"🥧 Distribución en {selected_month}",
-        f"📈 Evolución Temporal ({intervalo_texto})",
+        f"📊 Resoluciones por Periodo (Total: {df_filtered.shape[0]})",
+        f"🥧 Distribucion en {selected_month}",
+        f"📈 Evolucion Temporal ({intervalo_texto})",
         "👥 Productividad por Analista",
     ),
 )
@@ -440,11 +440,11 @@ def add_warning(fig_obj, row, col, text):
         font=dict(size=16, color="red")
     )
 
-# Agregar gráficos al subplot
+# Agregar graficos al subplot
 if show_graph1:
     for t in fig_bar.data:
         fig.add_trace(t, row=1, col=1)
-    fig.update_xaxes(title_text="Período", row=1, col=1)
+    fig.update_xaxes(title_text="Periodo", row=1, col=1)
     fig.update_yaxes(title_text="Porcentaje (%)", row=1, col=1)
 else:
     add_warning(fig, 1, 1, "Sin datos suficientes")
@@ -459,9 +459,9 @@ if show_graph3:
     if trend_trace is not None:
         fig.add_trace(trend_trace, row=2, col=1)
     
-    x_title = "Hora" if tipo_consulta == "📅 Día específico" else "Fecha"
+    x_title = "Hora" if tipo_consulta == "📅 Dia especifico" else "Fecha"
     fig.update_xaxes(title_text=x_title, row=2, col=1)
-    fig.update_yaxes(title_text="Número de Casos", row=2, col=1)
+    fig.update_yaxes(title_text="Numero de Casos", row=2, col=1)
 else:
     add_warning(fig, 2, 1, "Sin datos temporales")
 
@@ -470,7 +470,7 @@ if show_graph4:
         fig.add_trace(t, row=2, col=2)
     fig.update_yaxes(tickfont=dict(size=ANALYST_TICK_SIZE), row=2, col=2)
 else:
-    add_warning(fig, 2, 2, "Requiere filtro único")
+    add_warning(fig, 2, 2, "Requiere filtro unico")
 
 # Layout final
 fig.update_layout(
@@ -483,20 +483,20 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ──────────────── Información adicional ─────────────────
+# ------------------ Informacion adicional -------------------
 if missing_graphs:
-    st.info(f"ℹ️ Gráficos no disponibles: {', '.join(missing_graphs)}")
+    st.info(f"ℹ️ Graficos no disponibles: {', '.join(missing_graphs)}")
 
 if not df_filtered.empty:
     fecha_inicio = df_filtered["fecha_creacion"].min().strftime("%Y-%m-%d")
     st.success(f"📅 Datos disponibles desde: **{fecha_inicio}**")
 
-# ──────────────── Footer ─────────────────
+# ------------------ Footer -------------------
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666;'>"
     "🎯 Dashboard de Resoluciones de Riesgo | "
-    f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    f"Ultima actualizacion: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     "</div>",
     unsafe_allow_html=True
 )
