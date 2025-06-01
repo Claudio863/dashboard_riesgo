@@ -8,8 +8,9 @@ from plotly.subplots import make_subplots
 from statsmodels.tsa.seasonal import seasonal_decompose
 import os
 from datetime import datetime, date
-from funciones_google import login, listar_archivos_carpeta, gestionar_archivo_busqueda_diario, obtener_archivo_historico_desde_drive, verificar_estado_actualizacion_drive
+from funciones_google import login, listar_archivos_carpeta
 from identificador_analista import dataframe_cola_aws
+from lector_reporte_automático import archivo_actualizado
 
 # ──────────────── Configuración y estilos ─────────────────
 st.set_page_config(
@@ -60,27 +61,6 @@ MARGINS = dict(l=80, r=80, t=100, b=80)
 FOLDER_ID = "1H--_ASpw__9OTnUG1bDfGZ22zRlUpMdF"
 CACHE_FILE = "datos_diarios_cache.csv"
 
-# ──────────────── Función de carga de datos ────────────────
-def archivo_actualizado():
-    """
-    Función de respaldo para cargar datos desde archivo CSV local
-    """
-    try:
-        # Buscar archivo CSV más reciente
-        import glob
-        archivos_csv = glob.glob("datos_*.csv")
-        if archivos_csv:
-            archivo_mas_reciente = max(archivos_csv)
-            df = pd.read_csv(archivo_mas_reciente)
-            st.info(f"📁 Cargando datos desde archivo local: {archivo_mas_reciente}")
-            return df
-        else:
-            st.error("❌ No se encontraron archivos CSV locales")
-            return pd.DataFrame()
-    except Exception as e:
-        st.error(f"❌ Error cargando archivo local: {e}")
-        return pd.DataFrame()
-
 # ──────────────── Funciones auxiliares ─────────────────
 @st.cache_data(ttl=3600)  # Cache por 1 hora
 def cargar_google_sheet_en_dataframe(sheet_id, ruta_descarga=""):
@@ -100,37 +80,11 @@ def obtener_datos_google_sheets():
     df1 = cargar_google_sheet_en_dataframe(sheet_id1)
     df2 = cargar_google_sheet_en_dataframe(sheet_id2)
     df = pd.concat([df1, df2], ignore_index=True)
-      # Verificar que las columnas necesarias existen
-    columnas_requeridas = ["full_name", "resolucion_riesgo", "fecha_creacion"]
-    columnas_disponibles = [col for col in columnas_requeridas if col in df.columns]
-    
-    # Agregar analista_riesgo si existe, sino crear una columna con valor por defecto
-    if "analista_riesgo" in df.columns:
-        columnas_disponibles.append("analista_riesgo")
-    else:
-        df["analista_riesgo"] = "Desconocido"
-        columnas_disponibles.append("analista_riesgo")
-    
-    # Manejar la columna RUT
-    if "rut" in df.columns:
-        columnas_disponibles.append("rut")
-        # Si la columna rut existe pero tiene valores vacíos, extraer del full_name
-        df["rut"] = df["rut"].fillna("")
-        mask_rut_vacio = (df["rut"] == "") | df["rut"].isna()
-        df.loc[mask_rut_vacio, "rut"] = df.loc[mask_rut_vacio, "full_name"].apply(
-            lambda x: x.split("_")[0] if pd.notna(x) and "_" in str(x) else ""
-        )
-    else:
-        # Si no existe la columna rut, crearla desde full_name
-        df["rut"] = df["full_name"].apply(lambda x: x.split("_")[0] if pd.notna(x) and "_" in str(x) else "")
-        columnas_disponibles.append("rut")
     
     # Procesar datos
-    df_procesado = df[columnas_disponibles].dropna(subset=["full_name", "resolucion_riesgo", "fecha_creacion"])
+    df_procesado = df[["full_name", "resolucion_riesgo", "fecha_creacion", "analista_riesgo"]].dropna()
     df_procesado.reset_index(drop=True, inplace=True)
-    
-    # Estandarizar resoluciones
-    df_procesado = estandarizar_resoluciones(df_procesado)
+    df_procesado["rut"] = df_procesado["full_name"].apply(lambda x: x.split("_")[0])
     
     return df_procesado
 
@@ -157,80 +111,30 @@ def verificar_y_obtener_datos_del_dia():
                         pass
         return df_hoy
 
-def estandarizar_resoluciones(df):
-    """Estandariza las categorías de resoluciones para evitar duplicados"""
-    mapeo_resoluciones = {
-        # Variaciones de "Aprobado"
-        "100% aprobado": "Aprobado",
-        "100% Aprobado": "Aprobado",
-        
-        # Variaciones de "Aprobado con propuesta"
-        "Aprobado con Propuesta": "Aprobado con propuesta",
-        "aprobado con propuesta": "Aprobado con propuesta",
-        
-        # Variaciones de "Devuelto a comercial"
-        "Devuelto Comercial": "Devuelto a comercial",
-        "devuelto comercial": "Devuelto a comercial",
-        "Devuelto a Comercial": "Devuelto a comercial",
-        
-        # Variaciones de "Rechazado"
-        "rechazado": "Rechazado",
-        "RECHAZADO": "Rechazado"
-    }
-    
-    df["resolucion_riesgo"] = df["resolucion_riesgo"].replace(mapeo_resoluciones)
-    return df
-
 def obtener_datos_combinados():
-    """Combina datos históricos desde Google Drive con datos actuales de Google Sheets"""
-    try:
-        # Datos históricos desde Google Drive (usando el sistema de gestión diaria)
-        with st.spinner("🔍 Obteniendo datos históricos desde Google Drive..."):
-            df_historico = obtener_archivo_historico_desde_drive(FOLDER_ID)
-        
-        if df_historico.empty:
-            st.warning("⚠️ No se pudieron cargar datos históricos, usando proceso local como respaldo...")
-            df_historico = archivo_actualizado()
-        else:
-            st.success(f"✅ Datos históricos cargados desde Google Drive ({len(df_historico)} registros)")
-    
-    except Exception as e:
-        st.error(f"❌ Error cargando desde Google Drive: {e}")
-        st.info("🔄 Usando proceso local como respaldo...")
-        df_historico = archivo_actualizado()
-    
-    # Convertir fecha_creacion a datetime sin timezone
-    df_historico["fecha_creacion"] = pd.to_datetime(
-        df_historico["fecha_creacion"], errors="coerce"
-    )
-    
-    # Asegurar que no tenga timezone
-    if df_historico["fecha_creacion"].dt.tz is not None:
-        df_historico["fecha_creacion"] = df_historico["fecha_creacion"].dt.tz_localize(None)
-    
-    # Filtrar datos históricos para excluir hoy
-    hoy = pd.Timestamp.now().normalize()
-    df_historico = df_historico[df_historico['fecha_creacion'] < hoy]
-    
-    # Estandarizar resoluciones históricas
-    df_historico = estandarizar_resoluciones(df_historico)
-    
+    """Combina datos históricos con datos actuales de Google Sheets"""
     # Datos del día actual desde Google Sheets
     df_actual = verificar_y_obtener_datos_del_dia()
-    
-    # Convertir fecha_creacion a datetime sin timezone
-    df_actual['fecha_creacion'] = pd.to_datetime(df_actual['fecha_creacion'], errors='coerce')
-    
-    # Asegurar que no tenga timezone
-    if df_actual['fecha_creacion'].dt.tz is not None:
-        df_actual['fecha_creacion'] = df_actual['fecha_creacion'].dt.tz_localize(None)
-    
-    # Filtrar solo datos de hoy de Google Sheets
-    df_actual = df_actual[df_actual['fecha_creacion'] >= hoy]
-    
-    # Estandarizar resoluciones actuales
-    df_actual = estandarizar_resoluciones(df_actual)
-    
+    df_actual['fecha_creacion'] = pd.to_datetime(df_actual['fecha_creacion'], errors='coerce').dt.tz_localize(None)
+
+    # Datos históricos desde archivo
+    df_historico = archivo_actualizado()
+    # --- Validación defensiva ---
+    if "fecha_creacion" not in df_historico.columns:
+        st.error(
+            "❌ El archivo histórico cargado no contiene la columna 'fecha_creacion'. "
+            "Verifica que el respaldo tenga la estructura correcta o vuelve a generar el archivo."
+        )
+        st.stop()
+    # --- Fin validación ---
+    df_historico["fecha_creacion"] = pd.to_datetime(
+        df_historico["fecha_creacion"], utc=True, errors="coerce"
+    ).dt.tz_localize(None)
+
+    # Filtrar datos históricos para evitar duplicados (excluir hoy)
+    hoy = pd.Timestamp.now().normalize()
+    df_historico = df_historico[df_historico['fecha_creacion'] < hoy]
+
     # Combinar datasets
     df_final = pd.concat([df_historico, df_actual], ignore_index=True)
     
@@ -255,34 +159,6 @@ with col2:
         st.rerun()
 
 with col3:
-    if st.button("📤 Actualizar Google Drive", help="Fuerza la actualización del archivo en Google Drive"):
-        with st.spinner("📤 Actualizando archivo en Google Drive..."):
-            try:
-                # Forzar nueva generación del archivo
-                from datetime import date
-                import os
-                
-                hoy = date.today().strftime("%Y-%m-%d")
-                archivo_local_antiguo = f"datos_busqueda_{hoy}.csv"
-                
-                # Eliminar archivo local si existe para forzar regeneración
-                if os.path.exists(archivo_local_antiguo):
-                    os.remove(archivo_local_antiguo)
-                
-                # Regenerar usando gestión de archivo
-                nueva_ruta = gestionar_archivo_busqueda_diario(FOLDER_ID)
-                
-                if nueva_ruta:
-                    st.success("✅ Archivo actualizado en Google Drive")
-                else:
-                    st.error("❌ Error al actualizar Google Drive")
-                    
-                st.cache_data.clear()
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
-
-col4 = st.columns(1)[0]
-with col4:
     st.markdown(f"**📅 Última actualización:** {datetime.now().strftime('%H:%M')}")
 
 # ──────────────── Carga de datos ─────────────────
@@ -290,105 +166,41 @@ with col4:
 def cargar_datos():
     return obtener_datos_combinados()
 
-# Verificar estado de Google Drive antes de cargar datos
-estado_drive = verificar_estado_actualizacion_drive(FOLDER_ID)
-
-with st.status("📊 Cargando datos...", expanded=False) as status:
-    st.write("🔍 Verificando fuentes de datos...")
-    
-    # Mostrar estado de Google Drive con enlace al folder
-    google_drive_link = "https://drive.google.com/drive/folders/1H--_ASpw__9OTnUG1bDfGZ22zRlUpMdF"
-    
-    if estado_drive['existe']:
-        if estado_drive['actualizado']:
-            st.write(f"✅ Google Drive: {estado_drive['mensaje']} - [Ver en Google Drive]({google_drive_link})")
-        else:
-            st.write(f"⚠️ Google Drive: {estado_drive['mensaje']} - [Ver en Google Drive]({google_drive_link})")
-    else:
-        st.write(f"❌ Google Drive: {estado_drive['mensaje']} - [Ver en Google Drive]({google_drive_link})")
-    
-    df_graf = cargar_datos()
-    
-    if not df_graf.empty:
-        # Información sobre las fuentes de datos
-        hoy = pd.Timestamp.now().normalize()
-        datos_historicos = len(df_graf[df_graf['fecha_creacion'] < hoy])
-        datos_actuales = len(df_graf[df_graf['fecha_creacion'] >= hoy])
-        
-        st.write(f"📂 Datos históricos: {datos_historicos} registros ([Google Drive]({google_drive_link}))")
-        st.write(f"📊 Datos actuales: {datos_actuales} registros (Google Sheets)")
-        st.write(f"📈 Total combinado: {len(df_graf)} registros")
-        
-        status.update(label="✅ Datos cargados exitosamente", state="complete")
-    else:
-        st.error("❌ No se pudieron cargar los datos")
-        st.stop()
+df_graf = cargar_datos()
 
 # ──────────────── Sidebar: Configuración ─────────────────
 st.sidebar.markdown("## ⚙️ Configuración")
 
 # Filtros de datos
-mostrar_historico = st.sidebar.checkbox(
-    "📊 Mostrar historial completo de resoluciones",
-    value=False,
-    help="Por defecto: muestra solo la última resolución por operación. Activar para ver todas las resoluciones históricas."
+unicos_graf = st.sidebar.checkbox(
+    "🔍 Filtrar por ruts únicos (fecha más reciente)",
+    help="Mantiene solo el registro más reciente por RUT"
 )
 
-if mostrar_historico:
-    st.sidebar.warning("⚠️ **Advertencia:** Al mostrar el historial completo no es posible identificar el analista que realizó cada operación específica.")
+omitir_cero = st.sidebar.checkbox(
+    "🚫 Omitir resoluciones '0'",
+    help="Excluye resoluciones con valor '0' de los gráficos"
+)
 
 # Procesar filtros
-if not mostrar_historico:
-    # Por defecto: mostrar solo última resolución por operación (RUT)
+if unicos_graf:
     df_graf = (
         df_graf.sort_values("fecha_creacion", ascending=False)
         .drop_duplicates("rut", keep="first")
         .reset_index(drop=True)
     )
     
-    # Solo cuando se muestra última resolución por operación podemos detectar analistas
-    try:
-        # Obtener datos actuales de Google Sheets para analistas
-        df_sheets_actual = verificar_y_obtener_datos_del_dia()
-        
-        if df_sheets_actual is not None and not df_sheets_actual.empty:
-            df_graf["rut"] = df_graf["rut"].astype(str)
-            df_sheets_actual["rut"] = df_sheets_actual["rut"].astype(str)
-            
-            # Limpiar y preparar datos de analistas
-            df_sheets_actual = df_sheets_actual.dropna(subset=['analista_riesgo'])
-            df_sheets_actual = df_sheets_actual[df_sheets_actual['analista_riesgo'] != '']
-            
-            # Hacer el merge para obtener analistas
-            df_graf = df_graf.merge(
-                df_sheets_actual[["rut", "analista_riesgo"]].drop_duplicates("rut"), 
-                on="rut", 
-                how="left",
-                suffixes=('', '_sheet')
-            )
-            
-            # Si ya había columna analista_riesgo, usar la del sheet cuando esté disponible
-            if 'analista_riesgo_sheet' in df_graf.columns:
-                df_graf['analista_riesgo'] = df_graf['analista_riesgo_sheet'].fillna(
-                    df_graf.get('analista_riesgo', 'Desconocido')
-                )
-                df_graf.drop('analista_riesgo_sheet', axis=1, inplace=True)
-            
-            # Llenar valores faltantes
-            df_graf["analista_riesgo"].fillna("Desconocido", inplace=True)
-            
-            analistas_detectados = (df_graf["analista_riesgo"] != "Desconocido").sum()
-            st.sidebar.success(f"✅ Analistas detectados: {analistas_detectados}/{len(df_graf)} operaciones")
-        else:
-            df_graf["analista_riesgo"] = "Desconocido"
-            st.sidebar.warning("⚠️ No se pudieron cargar datos de analistas")
-    except Exception as e:
-        df_graf["analista_riesgo"] = "Desconocido"
-        st.sidebar.error(f"❌ Error cargando analistas: {str(e)}")
-else:
-    # Si se muestra historial completo, no detectar analistas
-    if "analista_riesgo" not in df_graf.columns:
-        df_graf["analista_riesgo"] = "No disponible (historial completo)"
+    # Agregar información de analistas
+    df_cola_aws = dataframe_cola_aws()
+    df_graf["rut"] = df_graf["rut"].astype(str)
+    df_cola_aws["rut"] = df_cola_aws["rut"].astype(str)
+    df_graf = df_graf.merge(
+        df_cola_aws[["rut", "analista_riesgo"]], on="rut", how="left"
+    )
+    df_graf["analista_riesgo"].fillna("Desconocido", inplace=True)
+
+if omitir_cero:
+    df_graf = df_graf[df_graf["resolucion_riesgo"] != "0"]
 
 # ──────────────── Sidebar: Filtros de fecha ─────────────────
 st.sidebar.markdown("## 📅 Filtros de Tiempo")
@@ -441,15 +253,16 @@ if not df_filtered.empty:
         )
     
     with col2:
-        aprobados = len(df_filtered[df_filtered["resolucion_riesgo"] == "Aprobado"])
+        aprobados = len(df_filtered[df_filtered["resolucion_riesgo"].isin(["Aprobado", "100% aprobado"])])
         tasa_aprobacion = (aprobados / len(df_filtered) * 100) if len(df_filtered) > 0 else 0
         st.metric(
             "✅ Tasa de Aprobación",
-            f"{tasa_aprobacion:.1f}%",        help="Porcentaje de casos aprobados"
+            f"{tasa_aprobacion:.1f}%",
+            help="Porcentaje de casos aprobados"
         )
     
     with col3:
-        if not mostrar_historico and "analista_riesgo" in df_filtered.columns:
+        if unicos_graf and "analista_riesgo" in df_filtered.columns:
             analistas_activos = df_filtered["analista_riesgo"].nunique()
             st.metric(
                 "👥 Analistas Activos",
@@ -457,7 +270,7 @@ if not df_filtered.empty:
                 help="Número de analistas que evaluaron casos"
             )
         else:
-            st.metric("👥 Analistas", "N/A", help="Requiere vista por operación única")
+            st.metric("👥 Analistas", "N/A", help="Requiere filtro por RUT único")
     
     with col4:
         if len(df_filtered) > 0:
@@ -477,13 +290,17 @@ color_map = {
     "Desconocido": "#AAAAAA",
     "0": "#CCCCCC",
     "Aprobado": "#77DD77",
+    "100% aprobado": "#77DD77",
     "Aprobado con propuesta": "#FDFD96",
+    "Aprobado con Propuesta": "#FDFD96",
     "Devuelto a comercial": "#FFB347",
+    "Devuelto Comercial": "#FFB347",
     "Rechazado": "#FF6961",
 }
 
-orden_categorias = ["0", "Aprobado", "Aprobado con propuesta", 
-                   "Devuelto a comercial", "Rechazado", "Desconocido"]
+orden_categorias = ["0", "Aprobado", "100% aprobado", "Aprobado con propuesta", 
+                   "Aprobado con Propuesta", "Devuelto a comercial", 
+                   "Devuelto Comercial", "Rechazado", "Desconocido"]
 
 # ──────────────── Generación de gráficos ─────────────────
 missing_graphs = []
@@ -585,7 +402,7 @@ else:
 
 # Gráfico 4: Analistas
 show_graph4 = False
-if not mostrar_historico and "analista_riesgo" in df_filtered.columns:
+if unicos_graf and "analista_riesgo" in df_filtered.columns:
     df_a = df_filtered.groupby("analista_riesgo").size().reset_index(name="operaciones")
     if not df_a.empty:
         fig_analista = px.bar(
@@ -677,37 +494,10 @@ if not df_filtered.empty:
 
 # ──────────────── Footer ─────────────────
 st.markdown("---")
-st.markdown("### 📋 Información del Sistema")
-
-col_info1, col_info2, col_info3 = st.columns(3)
-
-with col_info1:
-    st.markdown("""
-    **📂 Fuentes de Datos:**
-    - 🗄️ Históricos: Google Drive (repositorio central)
-    - 📊 Actuales: Google Sheets (tiempo real)
-    """)
-
-with col_info2:
-    st.markdown("""
-    **🔄 Actualización:**
-    - 📅 Automática: Cada día
-    - 🎯 Manual: Botón "Actualizar Google Drive"
-    """)
-
-with col_info3:
-    st.markdown(f"""
-    **📈 Estado Actual:**
-    - 📊 Total registros: {len(df_graf)}
-    - 🕒 Última consulta: {datetime.now().strftime('%H:%M:%S')}
-    """)
-
-st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666;'>"
     "🎯 Dashboard de Resoluciones de Riesgo | "
-    f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M')} | "
-    "🗄️ Repositorio Central: Google Drive"
+    f"Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     "</div>",
     unsafe_allow_html=True
 )
