@@ -8,9 +8,8 @@ from plotly.subplots import make_subplots
 from statsmodels.tsa.seasonal import seasonal_decompose
 import os
 from datetime import datetime, date
-from funciones_google import login, listar_archivos_carpeta
+from funciones_google import login, listar_archivos_carpeta, archivo_actualizado
 from identificador_analista import dataframe_cola_aws
-from lector_reporte_automático import archivo_actualizado
 
 # ──────────────── Configuración y estilos ─────────────────
 st.set_page_config(
