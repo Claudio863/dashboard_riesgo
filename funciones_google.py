@@ -18,7 +18,7 @@ from typing import Optional
 def archivo_actualizado():
     """
     Función de respaldo para cargar datos desde archivo CSV local
-    Reemplaza la funcionalidad del módulo lector_reporte_automático eliminado
+    Proporciona datos de fallback cuando no hay acceso a Google Drive
     """
     try:
         import glob
@@ -235,13 +235,13 @@ INFORMACIÓN ADICIONAL:
 - Sistema: Dashboard de Riesgo
 - Archivo generado automáticamente
 """
-        
-        # Escribir el error al archivo
+          # Escribir el error al archivo
         with open(ruta_archivo_error, "w", encoding="utf-8") as file:
             file.write(contenido_error)
         
         print(f"📝 Archivo de error creado: {ruta_archivo_error}")
-          # Subir el archivo a Google Drive
+        
+        # Subir el archivo a Google Drive
         id_archivo_drive = subir_archivo(
             ruta_archivo_error, 
             nombre_archivo_error,
@@ -314,8 +314,7 @@ def gestionar_archivo_busqueda_diario(folder_id="1H--_ASpw__9OTnUG1bDfGZ22zRlUpM
                 archivo_info = archivo_hoy.iloc[0]
                 archivo_hoy_id = archivo_info["ID"]
                 fecha_creacion_str = archivo_info["Fecha Creación"]
-                
-                # Parsear fecha de creación del archivo en Google Drive
+                  # Parsear fecha de creación del archivo en Google Drive
                 try:
                     # Formato típico: 2024-05-31T14:30:00.000Z
                     fecha_creacion = datetime.fromisoformat(fecha_creacion_str.replace('Z', '+00:00'))
@@ -323,7 +322,6 @@ def gestionar_archivo_busqueda_diario(folder_id="1H--_ASpw__9OTnUG1bDfGZ22zRlUpM
                     
                     # Verificar si el archivo fue creado/actualizado después de las 10:00 AM de hoy
                     limite_actualizacion = datetime.combine(date.today(), hora_limite)
-                    
                     if fecha_creacion_local >= limite_actualizacion:
                         archivo_actualizado_hoy = True
                         print(f"✅ Archivo encontrado y actualizado: {nombre_archivo_esperado}")
@@ -332,11 +330,12 @@ def gestionar_archivo_busqueda_diario(folder_id="1H--_ASpw__9OTnUG1bDfGZ22zRlUpM
                         archivo_actualizado_hoy = False
                         print(f"⚠️ Archivo encontrado pero desactualizado: {nombre_archivo_esperado}")
                         print(f"📅 Creado: {fecha_creacion_local.strftime('%Y-%m-%d %H:%M:%S')} (antes de 10:00 AM)")
-                        
+                
                 except Exception as e:
                     print(f"⚠️ Error parseando fecha de creación: {e}")
                     archivo_actualizado_hoy = False
-          # Ruta local donde guardar/cargar el archivo
+        
+        # Ruta local donde guardar/cargar el archivo
         ruta_local = f"datos_busqueda_{hoy}.csv"
         
         if archivo_hoy_encontrado and archivo_actualizado_hoy:
@@ -395,8 +394,7 @@ def gestionar_archivo_busqueda_diario(folder_id="1H--_ASpw__9OTnUG1bDfGZ22zRlUpM
                 print(f"🔍 Ejecutando búsqueda completa de datos actualizados...")
                 df_actualizado = archivo_actualizado()
                 
-                # Guardar localmente
-                df_actualizado.to_csv(ruta_local, index=False)
+                # Guardar localmente                df_actualizado.to_csv(ruta_local, index=False)
                 print(f"💾 Archivo generado localmente: {ruta_local}")
                 
                 # Subir el nuevo archivo a Google Drive
@@ -416,7 +414,7 @@ def gestionar_archivo_busqueda_diario(folder_id="1H--_ASpw__9OTnUG1bDfGZ22zRlUpM
         
     except Exception as e:
         print(f"❌ Error en gestión del archivo de búsqueda diario: {e}")
-          # Fallback: usar el proceso local tradicional
+        # Fallback: usar el proceso local tradicional
         print(f"🔄 Usando proceso local como respaldo...")
         try:
             df_respaldo = archivo_actualizado()
