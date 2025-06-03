@@ -153,12 +153,27 @@ if not df_resoluciones.empty:
         
         # Obtener posiciones y colores para texto de Producto
         producto_text_positions, producto_text_colors = get_text_position_and_color(tabla_total_completa['Producto'])
+          # Crear etiquetas personalizadas para el eje X (solo mes y año)
+        custom_labels = []
+        for idx in tabla_total_completa.index:
+            if isinstance(idx, str) and '-' in idx:
+                # Formato "YYYY-MM"
+                year, month = idx.split('-')
+                month_names = {
+                    '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
+                    '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto', 
+                    '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre'
+                }
+                month_name = month_names.get(month, month)
+                custom_labels.append(f"{month_name} {year}")
+            else:
+                custom_labels.append(str(idx))
         
         # Agregar barras para One (con texto adaptativo)
         fig_barras.add_trace(
             go.Bar(
                 name='One',
-                x=tabla_total_completa.index,
+                x=custom_labels,  # Usar etiquetas personalizadas
                 y=tabla_total_completa['One'],
                 marker_color=color_one,
                 marker_line=dict(width=1, color='#1C5F7A'),
@@ -175,7 +190,7 @@ if not df_resoluciones.empty:
         fig_barras.add_trace(
             go.Bar(
                 name='Producto',
-                x=tabla_total_completa.index,
+                x=custom_labels,  # Usar etiquetas personalizadas
                 y=tabla_total_completa['Producto'],
                 marker_color=color_producto,
                 marker_line=dict(width=1, color='#7A2B56'),
@@ -186,12 +201,11 @@ if not df_resoluciones.empty:
                 hovertemplate='<b>Producto</b><br>Mes: %{x}<br>Evaluaciones: %{y:,}<extra></extra>'
             ),
             secondary_y=False
-        )
-          # Agregar línea de totales (con texto más grande)
+        )          # Agregar línea de totales (con texto más grande)
         fig_barras.add_trace(
             go.Scatter(
                 name='Total Evaluaciones',
-                x=tabla_total_completa.index,
+                x=custom_labels,  # Usar etiquetas personalizadas
                 y=tabla_total_completa['Total'],
                 mode='lines+markers+text',
                 line=dict(color=color_total, width=3, dash='dot'),
@@ -214,7 +228,7 @@ if not df_resoluciones.empty:
         fig_barras.add_trace(
             go.Scatter(
                 name='% Producto',
-                x=tabla_total_completa.index,
+                x=custom_labels,  # Usar etiquetas personalizadas
                 y=porcentajes_producto,
                 mode='lines+markers+text',
                 line=dict(color=color_linea, width=5, dash='solid'),  # Aumentado grosor de 4 a 5
@@ -231,28 +245,26 @@ if not df_resoluciones.empty:
                 hovertemplate='<b>% Producto</b><br>Mes: %{x}<br>Porcentaje: %{y:.1f}%<extra></extra>'
             ),
             secondary_y=True
-        )
-          # Configurar el eje Y primario (cantidades) - textos más grandes
+        )          # Configurar el eje Y primario (cantidades) - ocultar números
         fig_barras.update_yaxes(
             title_text="<b>Cantidad de Evaluaciones</b>",
             title_font=dict(size=20, family="Segoe UI", color="#2C3E50"),  # Aumentado de 16 a 20
-            tickfont=dict(size=16, family="Segoe UI", color="#2C3E50"),  # Aumentado de 12 a 16
+            showticklabels=False,  # Ocultar números del eje Y
             gridcolor='rgba(128,128,128,0.2)',
             gridwidth=1,
             secondary_y=False
         )
         
-        # Configurar el eje Y secundario (porcentajes) - textos más grandes
+        # Configurar el eje Y secundario (porcentajes) - ocultar números
         fig_barras.update_yaxes(
             title_text="<b>Porcentaje Producto (%)</b>",
             title_font=dict(size=20, family="Segoe UI", color=color_linea),  # Aumentado de 16 a 20
-            tickfont=dict(size=16, family="Segoe UI", color=color_linea),  # Aumentado de 12 a 16
+            showticklabels=False,  # Ocultar números del eje Y
             range=[0, 100],
             gridcolor='rgba(142,68,173,0.1)',  # Actualizado color de grid al nuevo púrpura
             gridwidth=1,
             secondary_y=True
-        )
-          # Configurar layout general con estilo corporativo y textos más grandes
+        )          # Configurar layout general con estilo corporativo y textos más grandes
         fig_barras.update_layout(
             title=dict(
                 text='<b>Dashboard Ejecutivo: Evolución de Evaluaciones por Canal</b>',
@@ -283,23 +295,10 @@ if not df_resoluciones.empty:
                 bgcolor="rgba(255,255,255,0.8)",
                 bordercolor="rgba(128,128,128,0.3)",
                 borderwidth=1
-            ),
-            plot_bgcolor='rgba(248,249,250,0.8)',
+            ),            plot_bgcolor='rgba(248,249,250,0.8)',
             paper_bgcolor='white',
             margin=dict(l=60, r=60, t=120, b=80),
-            hovermode='x unified',
-            annotations=[
-                dict(
-                    text="<i>Fuente: Sistema de Evaluaciones | Actualizado automáticamente</i>",
-                    showarrow=False,
-                    xref="paper",
-                    yref="paper",
-                    x=0.5,
-                    y=-0.12,
-                    xanchor='center',
-                    yanchor='bottom',
-                    font=dict(size=10, family="Segoe UI", color="gray")                )
-            ]
+            hovermode='x unified'
         )
         
         st.plotly_chart(fig_barras, use_container_width=True)

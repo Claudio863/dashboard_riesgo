@@ -11,14 +11,13 @@ def dataframe_cola_aws():
         
         # Exportar el Google Sheet como CSV
         archivo.GetContentFile(ruta_archivo, mimetype='text/csv')
-        
-        # Leer el CSV en un DataFrame
+          # Leer el CSV en un DataFrame
         df = pd.read_csv(ruta_archivo)
         return df
 
     # ID del Google Sheet (extraído de la URL)
     sheet_id = '1rmSOvyghKM5WpDESHOEnRvVAgtMhELnjys6V9cZ9MG0'
-    ruta_descarga = r'C:\Users\claud\OneDrive\Escritorio\Info\Proyectos\AWS_Riesk\Masive_extraction_json'
+    ruta_descarga = "."  # Usar directorio actual
     sheet_id2='10_ngye6Gevc44m-D2RI2pnpcrVarjXoMrFoYowrTWj4'
 
     # Cargar el Google Sheet en un DataFrame

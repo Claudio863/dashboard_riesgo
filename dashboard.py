@@ -1,4 +1,4 @@
-# dashboard_riesgo.py - version con margenes ampliados y fuentes mayores
+# dashboard_riesgo.py - Nueva arquitectura con data_manager modular
 # ----------------------------------------------------------------------------
 import streamlit as st
 import pandas as pd
@@ -7,9 +7,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from statsmodels.tsa.seasonal import seasonal_decompose
 import os
-from datetime import datetime, date
-from funciones_google import login, listar_archivos_carpeta, archivo_actualizado
-from identificador_analista import dataframe_cola_aws
+from datetime import datetime, date, time
+from data_manager import cargar_datos
 
 # ------------------ Configuracion y estilos -------------------
 st.set_page_config(
@@ -57,92 +56,41 @@ LEGEND_FONT_SIZE = 16
 ANALYST_TICK_SIZE = 16
 MARGINS = dict(l=80, r=80, t=100, b=80)
 
-FOLDER_ID = "1H--_ASpw__9OTnUG1bDfGZ22zRlUpMdF"
-CACHE_FILE = "datos_diarios_cache.csv"
-
 # ------------------ Funciones auxiliares -------------------
 @st.cache_data(ttl=3600)  # Cache por 1 hora
-def cargar_google_sheet_en_dataframe(sheet_id, ruta_descarga=""):
-    """Carga un Google Sheet especifico en DataFrame"""
-    drive = login()
-    archivo = drive.CreateFile({'id': sheet_id})
-    ruta_archivo = os.path.join(ruta_descarga, f'sheet_{sheet_id}.csv')
-    archivo.GetContentFile(ruta_archivo, mimetype='text/csv')
-    df = pd.read_csv(ruta_archivo)
-    return df
-
-def obtener_datos_google_sheets():
-    """Obtiene datos combinados de ambos Google Sheets"""
-    sheet_id1 = '1rmSOvyghKM5WpDESHOEnRvVAgtMhELnjys6V9cZ9MG0'
-    sheet_id2 = '10_ngye6Gevc44m-D2RI2pnpcrVarjXoMrFoYowrTWj4'
+def mostrar_informacion_actualizacion():
+    """Muestra información sobre el estado de actualización de datos"""
+    ahora = datetime.now()
+    hora_limite = time(10, 0)  # 10:00 AM
     
-    df1 = cargar_google_sheet_en_dataframe(sheet_id1)
-    df2 = cargar_google_sheet_en_dataframe(sheet_id2)
-    df = pd.concat([df1, df2], ignore_index=True)
-    
-    # Procesar datos
-    df_procesado = df[["full_name", "resolucion_riesgo", "fecha_creacion", "analista_riesgo"]].dropna()
-    df_procesado.reset_index(drop=True, inplace=True)
-    df_procesado["rut"] = df_procesado["full_name"].apply(lambda x: x.split("_")[0])
-    
-    return df_procesado
-
-def verificar_y_obtener_datos_del_dia():
-    """Verifica si existen datos del dia actual, si no los descarga"""
-    hoy = date.today().strftime("%Y-%m-%d")
-    archivo_cache_hoy = f"datos_{hoy}.csv"
-    
-    if os.path.exists(archivo_cache_hoy):
-        # Cargar datos del cache
-        return pd.read_csv(archivo_cache_hoy)
+    if ahora.time() >= hora_limite:
+        status = "🟢 Datos actualizados (después de 10:00 AM)"
     else:
-        # Descargar nuevos datos
-        with st.spinner("Descargando datos actualizados de Google Sheets..."):
-            df_hoy = obtener_datos_google_sheets()
-            # Guardar cache
-            df_hoy.to_csv(archivo_cache_hoy, index=False)
-            # Limpiar archivos antiguos
-            for archivo in os.listdir("."):
-                if archivo.startswith("datos_") and archivo.endswith(".csv") and archivo != archivo_cache_hoy:
-                    try:
-                        os.remove(archivo)
-                    except:
-                        pass
-        return df_hoy
-
-def obtener_datos_combinados():
-    """Combina datos historicos con datos actuales de Google Sheets"""
-    # Datos del dia actual desde Google Sheets
-    df_actual = verificar_y_obtener_datos_del_dia()
-    df_actual['fecha_creacion'] = pd.to_datetime(df_actual['fecha_creacion'], errors='coerce').dt.tz_localize(None)
-
-    # Datos historicos desde archivo
-    df_historico = archivo_actualizado()
-    # --- Validacion defensiva ---
-    if "fecha_creacion" not in df_historico.columns:
-        st.error(
-            "❌ El archivo historico cargado no contiene la columna 'fecha_creacion'. "
-            "Verifica que el respaldo tenga la estructura correcta o vuelve a generar el archivo."
-        )
-        st.stop()
-    # --- Fin validacion ---
-    df_historico["fecha_creacion"] = pd.to_datetime(
-        df_historico["fecha_creacion"], utc=True, errors="coerce"
-    ).dt.tz_localize(None)
-
-    # Filtrar datos historicos para evitar duplicados (excluir hoy)
-    hoy = pd.Timestamp.now().normalize()
-    df_historico = df_historico[df_historico['fecha_creacion'] < hoy]
-
-    # Combinar datasets
-    df_final = pd.concat([df_historico, df_actual], ignore_index=True)
+        status = "🟡 Datos del día anterior (antes de 10:00 AM)"
     
-    return df_final
+    return status, ahora.strftime('%H:%M')
+
+# ------------------ Carga de datos principal -------------------
+@st.cache_data(ttl=1800)  # Cache por 30 minutos
+def cargar_datos_dashboard(incluir_analistas=False):
+    """Función principal para cargar datos usando el nuevo data_manager"""
+    try:
+        df = cargar_datos(incluir_analistas=incluir_analistas)
+        if df.empty:
+            st.error("❌ No se pudieron cargar los datos. Verifica la conexión con Google Drive.")
+            st.stop()
+        return df
+    except Exception as e:
+        st.error(f"❌ Error al cargar datos: {str(e)}")
+        st.stop()
+
+# Obtener información de estado de datos
+status_actualizacion, hora_actual = mostrar_informacion_actualizacion()
 
 # ------------------ Header principal -------------------
 st.markdown("""
 <div class="main-header">
-    <h1>🎯 Dashboard: Resoluciones de Riesgo y Evolucion de Casos</h1>
+    <h1>🎯 Dashboard: Resoluciones de Riesgo y Evolución de Casos</h1>
 </div>
 """, unsafe_allow_html=True)
 
@@ -158,48 +106,33 @@ with col2:
         st.rerun()
 
 with col3:
-    st.markdown(f"**📅 Ultima actualizacion:** {datetime.now().strftime('%H:%M')}")
-
-# ------------------ Carga de datos -------------------
-@st.cache_data(ttl=1800)  # Cache por 30 minutos
-def cargar_datos():
-    return obtener_datos_combinados()
-
-df_graf = cargar_datos()
+    st.markdown(f"**📅 Última actualización:** {hora_actual}")
+    st.markdown(f"**Status:** {status_actualizacion}")
 
 # ------------------ Sidebar: Configuracion -------------------
 st.sidebar.markdown("## ⚙️ Configuracion")
 
 # Filtros de datos
 unicos_graf = st.sidebar.checkbox(
-    "🔍 Filtrar por ruts unicos (fecha mas reciente)",
-    help="Mantiene solo el registro mas reciente por RUT"
+    "🔍 Filtro resolución única más actual por cliente (ESTADO ACTUAL o FINAL del CLIENTE)",
+    help="Mantiene solo el registro más reciente por RUT"
 )
 
-omitir_cero = st.sidebar.checkbox(
-    "🚫 Omitir resoluciones '0'",
-    help="Excluye resoluciones con valor '0' de los graficos"
-)
+# Cargar datos con el nuevo sistema
+with st.spinner("Cargando datos desde Google Drive..."):
+    df_graf = cargar_datos_dashboard(incluir_analistas=unicos_graf)
 
-# Procesar filtros
+# Procesar filtros únicos si está habilitado
 if unicos_graf:
     df_graf = (
         df_graf.sort_values("fecha_creacion", ascending=False)
         .drop_duplicates("rut", keep="first")
         .reset_index(drop=True)
     )
-    
-    # Agregar informacion de analistas
-    df_cola_aws = dataframe_cola_aws()
-    df_graf["rut"] = df_graf["rut"].astype(str)
-    df_cola_aws["rut"] = df_cola_aws["rut"].astype(str)
-    df_graf = df_graf.merge(
-        df_cola_aws[["rut", "analista_riesgo"]], on="rut", how="left"
-    )
-    df_graf["analista_riesgo"].fillna("Desconocido", inplace=True)
-
-if omitir_cero:
-    df_graf = df_graf[df_graf["resolucion_riesgo"] != "0"]
+else:
+    # Si no se usa el filtro único, asegurar que la columna existe para evitar errores
+    if "analista_riesgo" not in df_graf.columns:
+        df_graf["analista_riesgo"] = "N/A"
 
 # ------------------ Sidebar: Filtros de fecha -------------------
 st.sidebar.markdown("## 📅 Filtros de Tiempo")
@@ -218,9 +151,13 @@ if tipo_consulta == "📊 Intervalo de fechas":
         st.error("⚠️ Selecciona ambas fechas para continuar")
         st.stop()
     
+    # Convertir fechas a UTC para comparación
+    start_datetime = pd.to_datetime(start_date).tz_localize('UTC')
+    end_datetime = pd.to_datetime(end_date).tz_localize('UTC') + pd.Timedelta(days=1)
+    
     df_filtered = df_graf[
-        (df_graf["fecha_creacion"] >= pd.to_datetime(start_date)) &
-        (df_graf["fecha_creacion"] < pd.to_datetime(end_date) + pd.Timedelta(days=1))
+        (df_graf["fecha_creacion"] >= start_datetime) &
+        (df_graf["fecha_creacion"] < end_datetime)
     ].copy()
     
     intervalo_texto = f"{start_date} - {end_date}"
@@ -230,15 +167,19 @@ else:
     if not single_day:
         st.error("⚠️ Selecciona un dia")
         st.stop()
+      # Convertir fecha a UTC para comparación
+    start_datetime = pd.to_datetime(single_day).tz_localize('UTC')
+    end_datetime = start_datetime + pd.Timedelta(days=1)
     
     df_filtered = df_graf[
-        (df_graf["fecha_creacion"] >= pd.to_datetime(single_day)) &
-        (df_graf["fecha_creacion"] < pd.to_datetime(single_day) + pd.Timedelta(days=1))
+        (df_graf["fecha_creacion"] >= start_datetime) &
+        (df_graf["fecha_creacion"] < end_datetime)
     ].copy()
     
     intervalo_texto = f"{single_day}"
 
-df_filtered["mes"] = df_filtered["fecha_creacion"].dt.to_period("M").astype(str)
+# Crear campo de mes para agrupación (convertir UTC a local para display)
+df_filtered["mes"] = df_filtered["fecha_creacion"].dt.tz_convert(None).dt.to_period("M").astype(str)
 
 # ------------------ Metricas principales -------------------
 if not df_filtered.empty:
@@ -262,14 +203,16 @@ if not df_filtered.empty:
     
     with col3:
         if unicos_graf and "analista_riesgo" in df_filtered.columns:
-            analistas_activos = df_filtered["analista_riesgo"].nunique()
+            # Contar solo analistas conocidos (no "Desconocido")
+            analistas_conocidos = df_filtered[df_filtered["analista_riesgo"] != "Desconocido"]
+            analistas_activos = analistas_conocidos["analista_riesgo"].nunique() if not analistas_conocidos.empty else 0
             st.metric(
                 "👥 Analistas Activos",
                 analistas_activos,
                 help="Numero de analistas que evaluaron casos"
             )
         else:
-            st.metric("👥 Analistas", "N/A", help="Requiere filtro por RUT unico")
+            st.metric("👥 Analistas", "N/A", help="Requiere filtro por estado actual del cliente")
     
     with col4:
         if len(df_filtered) > 0:
@@ -401,19 +344,22 @@ else:
 
 # Grafico 4: Analistas
 show_graph4 = False
-if unicos_graf and "analista_riesgo" in df_filtered.columns:
-    df_a = df_filtered.groupby("analista_riesgo").size().reset_index(name="operaciones")
-    if not df_a.empty:
-        fig_analista = px.bar(
-            df_a, x="operaciones", y="analista_riesgo",
-            text="operaciones", orientation="h", template="plotly_white",
-        )
-        fig_analista.update_traces(textposition="outside", marker_color="#4169E1")
-        fig_analista.update_layout(
-            margin=MARGINS, font=dict(size=TICK_FONT_SIZE),
-            xaxis_title="", yaxis_title="",
-        )
-        show_graph4 = True
+if unicos_graf and "analista_riesgo" in df_filtered.columns and df_filtered["analista_riesgo"].notna().any():
+    # Filtrar analistas conocidos (no "Desconocido")
+    df_analistas = df_filtered[df_filtered["analista_riesgo"] != "Desconocido"]
+    if not df_analistas.empty:
+        df_a = df_analistas.groupby("analista_riesgo").size().reset_index(name="operaciones")
+        if not df_a.empty:
+            fig_analista = px.bar(
+                df_a, x="operaciones", y="analista_riesgo",
+                text="operaciones", orientation="h", template="plotly_white",
+            )
+            fig_analista.update_traces(textposition="outside", marker_color="#4169E1")
+            fig_analista.update_layout(
+                margin=MARGINS, font=dict(size=TICK_FONT_SIZE),
+                xaxis_title="", yaxis_title="",
+            )
+            show_graph4 = True
 else:
     missing_graphs.append("Operaciones por Analista")
 
