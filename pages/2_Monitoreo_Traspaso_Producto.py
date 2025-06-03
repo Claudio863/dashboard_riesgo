@@ -28,6 +28,10 @@ def cargar_datos_google_sheet():
         sheet_id = '1wEcS8JvfKqjHA5PlD5N6ZaixG0rFYVq_pUQK1eMz5t4'
         
         drive = login()
+        if drive is None:
+            st.error("❌ No se pudo conectar a Google Drive")
+            return pd.DataFrame()
+            
         archivo = drive.CreateFile({'id': sheet_id})
         
         # Descargar como CSV temporal

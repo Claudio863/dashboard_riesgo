@@ -1,18 +1,16 @@
 from pydrive2.auth import GoogleAuth
-from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
-import pandas as pd
 import pandas as pd
 from collections import defaultdict
 import time
-import pandas as pd
 import os
 from PyPDF2 import PdfReader, PdfWriter
 from io import StringIO
 from openai import OpenAI
-import os
 import re
 from typing import Optional
+import json
+import tempfile
 
 # Función de respaldo para cargar datos
 def archivo_actualizado():
@@ -35,46 +33,115 @@ def archivo_actualizado():
 
 
 def login():
-    CREDENTIALS_FILE = 'drive_automat.json'
-    # Configuración para que PyDrive2 use el archivo de credenciales correcto
-    GoogleAuth.DEFAULT_SETTINGS['client_config_file'] = CREDENTIALS_FILE
-    gauth = GoogleAuth()
-    
-    # Modificar el flujo de autenticación para obtener el refresh_token
-    gauth.settings['client_config_backend'] = 'file'
-    gauth.settings['oauth_scope'] = ['https://www.googleapis.com/auth/drive']
-    gauth.settings['get_refresh_token'] = True
-    
-    # Forzar `access_type` a 'offline' y `approval_prompt` a 'force' para garantizar el refresh_token
-    gauth.settings['access_type'] = 'offline'
-    gauth.settings['approval_prompt'] = 'force'
-
-    # Intentar cargar las credenciales guardadas
-    gauth.LoadCredentialsFile("credentials.json")
-    if gauth.credentials is None:
-        # Si no existen, lanzar el flujo de autenticación web para obtener credenciales nuevas
-        gauth.LocalWebserverAuth()
-    elif gauth.access_token_expired:
-        # Refrescar el token si ha expirado
-        gauth.Refresh()
-    else:
-        # Autorizar con las credenciales existentes
-        gauth.Authorize()
-
-    # Guardar las credenciales en un archivo para reutilizarlas en el futuro
-    gauth.SaveCredentialsFile("credentials.json")
-    
-    # Retornar el objeto GoogleDrive para realizar operaciones con la API
-    drive = GoogleDrive(gauth)
-    return drive
+    """
+    Función de login que funciona tanto localmente como en Streamlit Cloud
+    - Local: usa archivos JSON de credenciales
+    - Streamlit Cloud: usa st.secrets
+    """
+    try:
+        import streamlit as st
+        
+        # Verificar si estamos en Streamlit Cloud (secrets disponibles)
+        if hasattr(st, 'secrets') and 'google_drive' in st.secrets:
+            print("🔑 Autenticando con Streamlit Cloud secrets...")
+            
+            # Crear diccionario de credenciales desde secrets
+            credentials_dict = {
+                "type": "service_account",
+                "project_id": st.secrets["google_drive"]["project_id"],
+                "private_key_id": st.secrets["google_drive"]["private_key_id"],
+                "private_key": st.secrets["google_drive"]["private_key"].replace('\\n', '\n'),
+                "client_email": st.secrets["google_drive"]["client_email"],
+                "client_id": st.secrets["google_drive"]["client_id"],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": st.secrets["google_drive"]["client_x509_cert_url"]
+            }
+            
+            # Crear archivo temporal para credenciales
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+                json.dump(credentials_dict, f)
+                temp_creds_path = f.name
+            
+            try:
+                # Configurar PyDrive2 para usar service account
+                gauth = GoogleAuth()
+                gauth.settings = {
+                    'client_config_backend': 'service',
+                    'service_config': {
+                        'client_json_file_path': temp_creds_path,
+                    }
+                }
+                gauth.ServiceAuth()
+                
+                print("✅ Autenticación exitosa con service account")
+                return GoogleDrive(gauth)
+                
+            finally:
+                # Siempre limpiar archivo temporal
+                try:
+                    os.unlink(temp_creds_path)
+                except:
+                    pass
+            
+        else:
+            print("🔑 Autenticando localmente con archivos JSON...")
+            
+            # Configuración local usando archivos JSON
+            CREDENTIALS_FILE = 'drive_automat.json'
+            
+            if not os.path.exists(CREDENTIALS_FILE):
+                print(f"❌ No se encontró {CREDENTIALS_FILE}")
+                return None
+                
+            GoogleAuth.DEFAULT_SETTINGS['client_config_file'] = CREDENTIALS_FILE
+            gauth = GoogleAuth()
+            
+            # Configuración para OAuth local
+            gauth.settings['client_config_backend'] = 'file'
+            gauth.settings['oauth_scope'] = ['https://www.googleapis.com/auth/drive']
+            gauth.settings['get_refresh_token'] = True
+            gauth.settings['access_type'] = 'offline'
+            gauth.settings['approval_prompt'] = 'force'
+            
+            # Intentar cargar credenciales guardadas
+            gauth.LoadCredentialsFile("mycreds.txt")
+            
+            if gauth.credentials is None:
+                print("🔄 Realizando autenticación web...")
+                gauth.LocalWebserverAuth()
+            elif gauth.access_token_expired:
+                print("🔄 Refrescando token expirado...")
+                gauth.Refresh()
+            else:
+                print("✅ Usando credenciales existentes")
+                gauth.Authorize()
+            
+            # Guardar credenciales para la próxima vez
+            gauth.SaveCredentialsFile("mycreds.txt")
+            
+            return GoogleDrive(gauth)
+            
+    except Exception as e:
+        print(f"❌ Error en login: {e}")
+        return None
 
 def listar_archivos_carpeta(folder_id):
+    """
+    Lista todos los archivos en una carpeta de Google Drive
+    """
     credenciales = login()
+    if credenciales is None:
+        print("❌ No se pudo conectar a Google Drive")
+        return pd.DataFrame()
+        
     query = f"'{folder_id}' in parents and trashed = false"
     nombres = []
     id_archive = []
     type_archive = []
     fechas_creacion = []
+    
     try:
         lista_archivos = credenciales.ListFile({'q': query}).GetList()
         if not lista_archivos:
@@ -88,6 +155,7 @@ def listar_archivos_carpeta(folder_id):
 
     except Exception as e:
         print(f"Se produjo un error al listar los archivos: {e}")
+        
     df_carpeta = pd.DataFrame({
         'Nombre': nombres,
         'ID': id_archive,
@@ -112,7 +180,11 @@ def bajar_archivo_por_id(id_drive: str, ruta_descarga: str) -> Optional[str]:
     devolviendo la ruta completa ya saneada. Si algo falla, retorna None.
     """
     try:
-        credenciales = login()                         # ← tu función de auth
+        credenciales = login()
+        if credenciales is None:
+            print("❌ No se pudo conectar a Google Drive para descargar archivo")
+            return None
+            
         archivo = credenciales.CreateFile({'id': id_drive})
         
         # Nombre original y nombre seguro
@@ -124,10 +196,11 @@ def bajar_archivo_por_id(id_drive: str, ruta_descarga: str) -> Optional[str]:
         os.makedirs(ruta_descarga, exist_ok=True)      # crea la carpeta si falta
 
         archivo.GetContentFile(ruta_completa)
+        print(f"✅ Archivo descargado: {nombre_seguro}")
         return ruta_completa
 
-    except Exception as e:  # noqa: BLE001
-        print(f"Error al bajar el archivo con ID {id_drive}: {e}")
+    except Exception as e:
+        print(f"❌ Error al bajar el archivo con ID {id_drive}: {e}")
         return None
 
 def subir_archivo(ruta_archivo_local: str, nombre_archivo: str = None, descripcion: str = "Archivo subido automáticamente") -> Optional[str]:
